@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+
+<body>
+
+<!-- Page Header Fragment -->
+<div th:fragment="pageHeader(title, subtitle)">
+    
+    <div class="mb-4">
+
+        <h3 class="fw-bold" th:text="${title}">
+            Page Title
+        </h3>
+
+        <p class="text-muted mb-0" th:text="${subtitle}">
+            Page subtitle description
+        </p>
+
+        <hr>
+
+    </div>
+
+</div>
+
+</body>
+</html>

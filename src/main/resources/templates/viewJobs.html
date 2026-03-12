@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+<style>
+#suggestions{
+    z-index: 1000;
+}
+</style>
+
+<title>View Jobs</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+</head>
+
+<body class="bg-light">
+
+
+
+<div th:replace="~{fragments/navbar :: navbar}"></div>
+
+<div class="container mt-5">
+
+<div th:replace="fragments/pageHeader :: pageHeader(
+'Available Jobs',
+'Search and apply for jobs that match your skills'
+)"></div>
+
+<!-- SEARCH BAR -->
+<div class="card shadow-sm mb-4">
+
+<div class="card-body">
+
+<form th:action="@{/viewJobs}" method="get" class="row g-2">
+<div class="col-md-5 position-relative">
+
+<input type="text"
+       id="jobSearch"
+       name="title"
+       class="form-control"
+       placeholder="Job title (Java, Spring...)">
+
+<ul id="suggestions"
+    class="list-group position-absolute w-100 shadow"></ul>
+
+</div>
+
+<div class="col-md-5">
+<input type="text"
+       name="location"
+       class="form-control"
+       placeholder="Location (Ahmedabad, Pune...)">
+</div>
+
+<div class="col-md-2">
+<button class="btn btn-primary w-100">
+Search
+</button>
+</div>
+
+</form>
+
+</div>
+
+</div>
+
+
+<!-- JOB TABLE -->
+<div class="card shadow-sm">
+
+<div class="card-header bg-dark text-white">
+<h4 class="mb-0">Available Jobs</h4>
+</div>
+
+<div class="card-body">
+
+<p class="text-muted mb-3">
+Showing <span th:text="${jobs.size()}"></span> jobs
+</p>
+
+<div class="table-responsive">
+
+<table class="table table-hover table-striped align-middle">
+
+<thead class="table-dark">
+
+<tr>
+<th>Job Title</th>
+<th>Company</th>
+<th>Location</th>
+<th>Salary</th>
+<th>Experience</th>
+<th>Description</th>
+<th>Action</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr th:each="job : ${jobs}">
+
+<td th:text="${job.jobTitle}"></td>
+
+<td th:text="${job.companyName}"></td>
+
+<td th:text="${job.location}"></td>
+
+<td th:text="${job.salary}"></td>
+
+<td th:text="${job.experience}"></td>
+
+<td>
+<div style="margin-top:20px">
+
+<a th:if="${currentPage > 0}"
+   th:href="@{/viewJobs(page=${currentPage-1})}">
+   Previous
+</a>
+
+<span th:text="${currentPage + 1}"></span>
+
+<a th:if="${currentPage < totalPages - 1}"
+   th:href="@{/viewJobs(page=${currentPage+1})}">
+   Next
+</a>
+
+</div>
+
+<a th:href="@{/viewJob/{id}(id=${job.jobId})}"
+   class="btn btn-info btn-sm">
+View Details
+</a>
+
+</td>
+
+<td>
+
+<!-- If already applied -->
+<span th:if="${appliedJobIds.contains(job.jobId)}"
+      class="badge bg-secondary">
+Applied
+</span>
+
+<!-- Show Apply only if NOT applied -->
+<a th:if="${!appliedJobIds.contains(job.jobId) 
+           and session.loggedUser.role == 'JOBSEEKER'}"
+   th:href="@{/applyJobPage/{id}(id=${job.jobId})}"
+   class="btn btn-success btn-sm">
+Apply
+</a>
+<!-- If job is already saved -->
+<a th:if="${savedJobIds.contains(job.jobId)}"
+   th:href="@{/unsaveJob/{id}(id=${job.jobId})}"
+   class="btn btn-danger btn-sm">
+
+❤️ Saved
+
+</a>
+
+<!-- If job is NOT saved -->
+<a th:if="${!savedJobIds.contains(job.jobId)}"
+   th:href="@{/saveJob/{id}(id=${job.jobId})}"
+   class="btn btn-outline-danger btn-sm">
+
+♡ Save
+
+</a>
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+</div>
+
+</div>
+
+</div>
+<script src="/js/search.js"></script>
+
+</body>
+</html>
+
