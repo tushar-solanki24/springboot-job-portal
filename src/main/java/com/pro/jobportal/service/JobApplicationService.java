@@ -21,6 +21,9 @@ public class JobApplicationService {
 	@Autowired
 	private JobRepository jobRepository;
 
+	@Autowired
+	private FileStorageService fileStorageService;
+
 	public boolean applyJob(Long userId, Long jobId, MultipartFile resume) {
 
 		if (repository.existsByUserIdAndJob_JobId(userId, jobId)) {
@@ -28,13 +31,23 @@ public class JobApplicationService {
 		}
 
 		Job job = jobRepository.findById(jobId).orElse(null);
+		if (job == null) {
+			return false;
+		}
+
+		String resumeFilename;
+		try {
+			resumeFilename = fileStorageService.storeResume(resume);
+		} catch (Exception ex) {
+			return false;
+		}
 
 		JobApplication application = new JobApplication();
 
 		application.setUserId(userId);
 		application.setJob(job);
 		application.setAppliedDate(LocalDate.now());
-		application.setResumePath(resume.getOriginalFilename());
+		application.setResumePath(resumeFilename);
 		application.setStatus("Applied");
 		
 		repository.save(application);

@@ -1,9 +1,11 @@
 package com.pro.jobportal.controller;
 
+import java.security.Principal;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -22,10 +24,9 @@ import com.pro.jobportal.entity.JobApplication;
 import com.pro.jobportal.entity.JobSeeker;
 import com.pro.jobportal.entity.SavedJob;
 import com.pro.jobportal.service.JobApplicationService;
+import com.pro.jobportal.service.JobSeekerService;
 import com.pro.jobportal.service.JobService;
 import com.pro.jobportal.service.SavedJobService;
-
-import jakarta.servlet.http.HttpSession;
 
 @Controller
 public class JobController {
@@ -39,40 +40,45 @@ public class JobController {
 	@Autowired
 	private SavedJobService savedJobService;
 
+	@Autowired
+	private JobSeekerService jobSeekerService;
+
 	// ADD_JOB
 	@GetMapping("/addJob")
-	public String addJobPage(HttpSession session, Model model){
-
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	public String addJobPage(Principal principal, Model model) {
+	    JobSeeker user = requireUser(principal);
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
-	    if(!user.getRole().equals("RECRUITER")){
+	    if (!user.getRole().equals("RECRUITER")) {
 	        return "redirect:/dashboard";
 	    }
 
-	    model.addAttribute("job", new Job());   // IMPORTANT
+	    model.addAttribute("job", new Job());
 
 	    return "addJob";
 	}
 
 	// SAVE_JOB
 	@PostMapping("/saveJob")
-	public String saveJob(@ModelAttribute Job job, HttpSession session){
+	public String saveJob(@ModelAttribute Job job, Principal principal) {
+		JobSeeker user = requireUser(principal);
+		if (user == null) {
+			return "redirect:/login";
+		}
+		if (!"RECRUITER".equals(user.getRole())) {
+			return "redirect:/dashboard";
+		}
 
-	JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
+		job.setRecruiterId(user.getId());
+	
+		job.setPostedDate(LocalDate.now());
+		job.setExpiryDate(LocalDate.now().plusDays(30));
 
-	job.setRecruiterId(user.getId());
+		jobService.saveJob(job);
 	
-	job.setPostedDate(LocalDate.now());
-	job.setExpiryDate(LocalDate.now().plusDays(30));
-
-	jobService.saveJob(job);
-	
-	
-	return "redirect:/dashboard";
+		return "redirect:/dashboard";
 	}
 
 	// VIEW_JOBS
@@ -80,11 +86,10 @@ public class JobController {
 	public String viewJobs(@RequestParam(required = false) String title,
 	        @RequestParam(required = false) String location,
 	        @RequestParam(defaultValue = "0") int page,
-	        HttpSession session,
+	        Principal principal,
 	        Model model) {
 
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
+	    JobSeeker user = requireUser(principal);
 	    if (user == null) {
 	        return "redirect:/login";
 	    }
@@ -127,9 +132,8 @@ public class JobController {
 
 	// MY_APPLICATION
 	@GetMapping("/myApplications")
-	public String myApplications(HttpSession session, Model model) {
-
-		JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
+	public String myApplications(Principal principal, Model model) {
+		JobSeeker user = requireUser(principal);
 
 		if (user == null) {
 			return "redirect:/login";
@@ -155,15 +159,17 @@ public class JobController {
 
 	@PostMapping("/applyJob")
 	public String applyJob(@RequestParam Long jobId, @RequestParam("resume") MultipartFile resume,
-			HttpSession session) {
-
-		JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
+			Principal principal) {
+		JobSeeker user = requireUser(principal);
 
 		if (user == null) {
 			return "redirect:/login";
 		}
 
-		applicationService.applyJob(user.getId(), jobId, resume);
+		boolean success = applicationService.applyJob(user.getId(), jobId, resume);
+		if (!success) {
+			return "redirect:/applyJobPage/" + jobId + "?error=upload";
+		}
 
 		return "redirect:/myApplications";
 	}
@@ -175,60 +181,67 @@ public class JobController {
 	}
 	
 	@GetMapping("/myJobs")
-	public String myJobs(HttpSession session, Model model){
+	public String myJobs(Principal principal, Model model) {
+		JobSeeker user = requireUser(principal);
+		if (user == null) {
+			return "redirect:/login";
+		}
+		if (!"RECRUITER".equals(user.getRole())) {
+			return "redirect:/dashboard";
+		}
 
-	JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
+		List<Job> jobs = jobService.getJobsByRecruiter(user.getId());
+		Map<Long, Long> applicantCounts = new HashMap<>();
+		for (Job job : jobs) {
+			long count = applicationService.getApplicantCount(job.getJobId());
+			applicantCounts.put(job.getJobId(), count);
+		}
 
-	if(user == null){
-	return "redirect:/login";
-	}
-
-	List<Job> jobs = jobService.getJobsByRecruiter(user.getId());
-
-	Map<Long, Long> applicantCounts = new HashMap<>();
-
-	for(Job job : jobs){
-	long count = applicationService.getApplicantCount(job.getJobId());
-	applicantCounts.put(job.getJobId(), count);
-	}
-
-	model.addAttribute("jobs", jobs);
-	model.addAttribute("counts", applicantCounts);
-
-	return "myJobs";
+		model.addAttribute("jobs", jobs);
+		model.addAttribute("counts", applicantCounts);
+		return "myJobs";
 	}
 	
 	@GetMapping("/viewApplicants/{jobId}")
-	public String viewApplicants(@PathVariable Long jobId, Model model){
+	public String viewApplicants(@PathVariable Long jobId, Principal principal, Model model) {
+		JobSeeker user = requireUser(principal);
+		if (user == null) {
+			return "redirect:/login";
+		}
+		if (!jobService.isJobOwnedByRecruiter(jobId, user.getId())) {
+			return "redirect:/myJobs?error=unauthorized";
+		}
 
-	List<JobApplication> applications =
-	applicationService.getApplicantsByJob(jobId);
-
-	model.addAttribute("applications", applications);
-
-	return "viewApplicants";
+		List<JobApplication> applications = applicationService.getApplicantsByJob(jobId);
+		model.addAttribute("applications", applications);
+		return "viewApplicants";
 	}
 	
 	@PostMapping("/updateStatus")
 	public String updateStatus(@RequestParam Long applicationId,
-	                           @RequestParam String status){
+	                           @RequestParam String status,
+	                           Principal principal) {
+		JobSeeker user = requireUser(principal);
+		if (user == null) {
+			return "redirect:/login";
+		}
 
-	JobApplication application =
-	applicationService.getApplicationById(applicationId);
+		JobApplication application = applicationService.getApplicationById(applicationId);
+		if (application == null || application.getJob() == null
+				|| !jobService.isJobOwnedByRecruiter(application.getJob().getJobId(), user.getId())) {
+			return "redirect:/myJobs?error=unauthorized";
+		}
 
-	application.setStatus(status);
-
-	applicationService.save(application);
-
-	return "redirect:/myJobs";
+		application.setStatus(status);
+		applicationService.save(application);
+		return "redirect:/viewApplicants/" + application.getJob().getJobId();
 	}
 	
 	@GetMapping("/saveJob/{jobId}")
-	public String saveJob(@PathVariable Long jobId, HttpSession session){
+	public String saveJob(@PathVariable Long jobId, Principal principal) {
+	    JobSeeker user = requireUser(principal);
 
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
@@ -238,11 +251,10 @@ public class JobController {
 	}
 	
 	@GetMapping("/savedJobs")
-	public String savedJobs(HttpSession session, Model model){
+	public String savedJobs(Principal principal, Model model) {
+	    JobSeeker user = requireUser(principal);
 
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
@@ -253,11 +265,10 @@ public class JobController {
 	}
 	
 	@GetMapping("/removeSavedJob/{jobId}")
-	public String removeSavedJob(@PathVariable Long jobId, HttpSession session){
+	public String removeSavedJob(@PathVariable Long jobId, Principal principal) {
+	    JobSeeker user = requireUser(principal);
 
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
@@ -267,12 +278,22 @@ public class JobController {
 	}
 	
 	@GetMapping("/unsaveJob/{id}")
-	public String unsaveJob(@PathVariable Long id, HttpSession session){
-
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
+	public String unsaveJob(@PathVariable Long id, Principal principal) {
+	    JobSeeker user = requireUser(principal);
+	    if (user == null) {
+	        return "redirect:/login";
+	    }
 
 	    savedJobService.removeSavedJob(user.getId(), id);
 
 	    return "redirect:/viewJobs";
+	}
+
+	private JobSeeker requireUser(Principal principal) {
+		if (principal == null) {
+			return null;
+		}
+		Optional<JobSeeker> user = jobSeekerService.findByEmail(principal.getName());
+		return user.orElse(null);
 	}
 }

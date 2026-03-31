@@ -15,4 +15,6 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
     List<JobApplication> findByJob_JobId(Long jobId);
     
     long countByJob_JobId(Long jobId);
+
+    void deleteByJob_JobId(Long jobId);
 }

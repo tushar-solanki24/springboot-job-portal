@@ -23,6 +23,8 @@ public interface JobRepository extends JpaRepository<Job, Long> {
 
 	List<Job> findByRecruiterId(Long recruiterId);
 
+	boolean existsByJobIdAndRecruiterId(Long jobId, Long recruiterId);
+
 	List<Job> findByJobTitleContainingIgnoreCaseAndExpiryDateAfter(String title, LocalDate date);
 
 	List<Job> findByLocationContainingIgnoreCaseAndExpiryDateAfter(String location, LocalDate date);

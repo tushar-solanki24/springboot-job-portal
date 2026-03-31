@@ -66,6 +66,10 @@ public class JobService {
 	public List<Job> getJobsByRecruiter(Long recruiterId) {
 		return jobRepository.findByRecruiterId(recruiterId);
 	}
+
+	public boolean isJobOwnedByRecruiter(Long jobId, Long recruiterId) {
+		return jobRepository.existsByJobIdAndRecruiterId(jobId, recruiterId);
+	}
 	
 	public List<Job> getActiveJobs(){
 	    return jobRepository.findByExpiryDateAfter(LocalDate.now());

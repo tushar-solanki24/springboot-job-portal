@@ -1,9 +1,12 @@
 package com.pro.jobportal.controller;
 
-import java.io.File;
+import java.security.Principal;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -17,15 +20,18 @@ import org.springframework.web.multipart.MultipartFile;
 import com.pro.jobportal.dto.JobSeekerDTO;
 import com.pro.jobportal.dto.LoginDTO;
 import com.pro.jobportal.entity.JobSeeker;
+import com.pro.jobportal.service.FileStorageService;
 import com.pro.jobportal.service.JobSeekerService;
 
-import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 
 @Controller
 public class JobseekerController {
 	@Autowired
 	private JobSeekerService service;
+
+	@Autowired
+	private FileStorageService fileStorageService;
 
 	@GetMapping("/register")
 	public String showRegisterUser(Model model) {
@@ -47,47 +53,32 @@ public class JobseekerController {
 		if (result.hasErrors()) {
 			return "register";
 		}
-		if(service.mobileExists(dto.getMobile())){
+		if (service.mobileExists(dto.getMobile())) {
 		    result.rejectValue("mobile", null, "Mobile number already registered");
+		    return "register";
 		}
 
 		service.registerUser(dto);
 
-		return "redirect:/login";
+		return "redirect:/login?registered";
 	}
 
 	@GetMapping("/login")
-	public String showLoginPage(Model model) {
+	public String showLoginPage(Model model, Authentication authentication) {
+		if (authentication != null && authentication.isAuthenticated()
+				&& !(authentication instanceof AnonymousAuthenticationToken)) {
+			return "redirect:/dashboard";
+		}
 
 		model.addAttribute("loginUser", new LoginDTO());
 
 		return "login";
 	}
 
-	@PostMapping("/login")
-	public String loginUser(@Valid @ModelAttribute("loginUser") LoginDTO dto, BindingResult result, Model model, HttpSession session) {
-
-		if (result.hasErrors()) {
-			return "login";
-		}
-
-		JobSeeker user = service.loginUser(dto.getEmail(), dto.getPassword());
-
-		if (user == null) {
-			model.addAttribute("error", "Invalid email or password");
-			return "login";
-		}
-		session.setAttribute("loggedUser", user);
-
-		return "redirect:/dashboard";
-	}
-
 	@GetMapping("/dashboard")
-	public String dashboard(HttpSession session, Model model){
-
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	public String dashboard(Principal principal, Model model) {
+	    JobSeeker user = requireUser(principal);
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
@@ -95,19 +86,11 @@ public class JobseekerController {
 
 	    return "dashboard";
 	}
-	
-	@GetMapping("/logout")
-	public String logout(HttpSession session) {
-		session.invalidate();
-		return "redirect:/login";
-	}
-	
+
 	@GetMapping("/profile")
-	public String profile(HttpSession session, Model model){
-
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	public String profile(Principal principal, Model model) {
+	    JobSeeker user = requireUser(principal);
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
@@ -115,10 +98,10 @@ public class JobseekerController {
 
 	    return "profile";
 	}
-	
+
 	@GetMapping("/skillSuggestions")
 	@ResponseBody
-	public List<String> skillSuggestions(@RequestParam String keyword){
+	public List<String> skillSuggestions(@RequestParam String keyword) {
 
 	    List<String> skills = List.of(
 	        "Java",
@@ -138,13 +121,11 @@ public class JobseekerController {
 	            .limit(5)
 	            .toList();
 	}
-	
+
 	@GetMapping("/editProfile")
-	public String editProfile(HttpSession session, Model model){
-
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
-
-	    if(user == null){
+	public String editProfile(Principal principal, Model model) {
+	    JobSeeker user = requireUser(principal);
+	    if (user == null) {
 	        return "redirect:/login";
 	    }
 
@@ -152,51 +133,40 @@ public class JobseekerController {
 
 	    return "editProfile";
 	}
-	
+
 	@PostMapping("/updateProfile")
 	public String updateProfile(@RequestParam String username,
 	                            @RequestParam String mobile,
 	                            @RequestParam String skills,
 	                            @RequestParam("profileImage") MultipartFile file,
-	                            HttpSession session){
-
-	    JobSeeker user = (JobSeeker) session.getAttribute("loggedUser");
+	                            Principal principal) {
+	    JobSeeker user = requireUser(principal);
+	    if (user == null) {
+	        return "redirect:/login";
+	    }
 
 	    user.setUsername(username);
 	    user.setMobile(mobile);
 	    user.setSkills(skills);
 
-	    if(!file.isEmpty()){
-
-	        try{
-
-	            String uploadDir = System.getProperty("user.dir") + "/uploads/";
-
-	            File directory = new File(uploadDir);
-
-	            if(!directory.exists()){
-	                directory.mkdirs();
-	            }
-
-	            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-
-	            File saveFile = new File(uploadDir + fileName);
-
-	            file.transferTo(saveFile);
-
-	            user.setProfileImage(fileName);
-
-	        }catch(Exception e){
-	            e.printStackTrace();
+	    if (!file.isEmpty()) {
+	        try {
+	            user.setProfileImage(fileStorageService.storeProfileImage(file));
+	        } catch (Exception e) {
+	            return "redirect:/editProfile?error=file";
 	        }
-
 	    }
 	    service.updateUser(user);
 
-	    session.setAttribute("loggedUser", user);
-
 	    return "redirect:/profile";
-	
 	}
-	
+
+	private JobSeeker requireUser(Principal principal) {
+		if (principal == null) {
+			return null;
+		}
+		Optional<JobSeeker> user = service.findByEmail(principal.getName());
+		return user.orElse(null);
+	}
+
 }

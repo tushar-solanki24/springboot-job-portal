@@ -54,6 +54,10 @@ public class JobSeekerService {
 	    return null;
 	}
 
+	public Optional<JobSeeker> findByEmail(String email) {
+		return repository.findByEmail(email);
+	}
+
 	public void updateUser(JobSeeker user) {
 		repository.save(user);
 	}
